@@ -10,6 +10,22 @@ Authors: Sebastian Garcia (eldraco@gmail.com, @eldracote), Veronica Valeros (ver
 
 Sapito is a multicast DNS (mDNS) sniffer and interpreter written in Python. Sapito sniffs packets from a pcap or interface and interprets the findings. This means that Sapito can understand the mDNS questions and answers, making sense of the messages. It can also identify certain devices, like finding MacOS computers and several types of iPads. The color-coded output helps to highlight important information.
 
+Sapito also decodes other common multicast discovery traffic when present (SSDP/UPnP, LLMNR, and IGMP) and prints extra record properties when available (e.g., `ttl`, `class`, and `unique` / cache-flush).
+
+## Who is the “real” sender in mDNS?
+
+mDNS packets may contain records about the sender itself *or* about other hosts.
+This can happen due to proxying/reflecting behavior, and in Apple networks specifically due to Bonjour Sleep Proxy.
+Because of this, you should treat the following as separate concepts:
+
+- **Packet sender**: the device that sent the Ethernet/IP packet (`SrcMAC`/`SrcIP`).
+- **Record owners/targets**: the hostnames referenced inside the DNS records (`PTR`/`SRV`/`TXT`/`A`/`AAAA`).
+
+Sapito tries to make this explicit:
+
+- If it sees an `A`/`AAAA` record whose IP equals the packet `SrcIP`, Sapito prints “Records indicate sender is advertising itself as …” and uses that hostname to label the device.
+- If the packet includes records referencing hostnames whose `A`/`AAAA` do **not** match `SrcIP`, Sapito prints that these are “other hostnames” (proxy/reflector/sleep-proxy behavior possible).
+
 
 
 Please read the [SECURITY](SECURITY.md) guide on reporting a bug. If you have the pcap with the offending packets, it would be extremely useful if you send it along with the bug report. 
