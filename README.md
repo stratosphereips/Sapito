@@ -12,6 +12,24 @@ Sapito is a multicast DNS (mDNS) sniffer and interpreter written in Python. Sapi
 
 Sapito also decodes other common multicast discovery traffic when present (SSDP/UPnP, LLMNR, and IGMP) and prints extra record properties when available (e.g., `ttl`, `class`, and `unique` / cache-flush).
 
+When printing service types (e.g., `_companion-link._tcp.local`), Sapito annotates them with a short human-readable description loaded from `mDNS-services.txt`.
+
+## LAN discovery helper
+
+This repo also includes `lan_discover.py`, a best-effort active discovery helper that combines:
+
+- ARP scan (IPv4 subnet) to get IP↔MAC↔vendor
+- mDNS/DNS-SD (Bonjour) to list advertised services and resolve them to IP/port/TXT
+- SSDP/UPnP (M-SEARCH) to find devices responding to UPnP discovery
+- NBNS node status to get NetBIOS names (mostly Windows/Samba)
+
+Example:
+
+```bash
+./venv/bin/python lan_discover.py --subnet 192.168.1.0/24 --duration 5
+./venv/bin/python lan_discover.py --subnet 192.168.1.0/24 --duration 5 --json
+```
+
 ## Who is the “real” sender in mDNS?
 
 mDNS packets may contain records about the sender itself *or* about other hosts.

@@ -10,6 +10,7 @@ from scapy.all import *
 from datetime import datetime
 from zeroconf import _protocol as zproto
 import socket
+import os
 from types import SimpleNamespace
 
 # Default args for import-time use (tests, library usage). Overridden in __main__.
@@ -97,6 +98,79 @@ KNOWN_TXT_KEYS = {
         "rpMac": "Unknown (often '0')",
     },
 }
+
+def _load_mdns_service_descriptions(path: str) -> dict:
+    """
+    Load a small mapping of DNS-SD/mDNS service types to human-readable descriptions.
+
+    File format (one per line):
+      _service._tcp.local    # Comment/description
+    """
+    mapping: dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                s = line.strip()
+                if not s or s.startswith("#"):
+                    continue
+                if "#" in s:
+                    left, right = s.split("#", 1)
+                    key = left.strip()
+                    desc = right.strip()
+                else:
+                    key = s
+                    desc = ""
+                if not key:
+                    continue
+                mapping[key.rstrip(".")] = desc
+    except FileNotFoundError:
+        # Optional helper file; absence should not break parsing.
+        return {}
+    except Exception:
+        return {}
+    return mapping
+
+
+SERVICE_TYPE_DESCRIPTIONS = _load_mdns_service_descriptions(
+    os.path.join(os.path.dirname(__file__), "mDNS-services.txt")
+)
+
+
+def _extract_service_type_from_name(dns_name: str) -> str:
+    """
+    Given a DNS name, try to extract the base DNS-SD service type (e.g. _airplay._tcp.local).
+    Handles instance names and subtype names:
+      Instance._airplay._tcp.local
+      _SUBTYPE._sub._googlecast._tcp.local
+    """
+    name = _normalize_hostname(dns_name).rstrip(".")
+    if not name.endswith(".local"):
+        return ""
+    parts = [p for p in name.split(".") if p]
+    if len(parts) < 4:
+        return ""
+
+    # Common base: _service._tcp.local or _service._udp.local
+    for proto in ("_tcp", "_udp"):
+        if proto in parts:
+            i = parts.index(proto)
+            # service label is immediately before _tcp/_udp
+            if i - 1 >= 0:
+                service = parts[i - 1]
+                # subtype form: _sub._service._tcp.local
+                if service == "_sub" and i - 2 >= 0:
+                    service = parts[i - 2]
+                return f"{service}.{proto}.local"
+    return ""
+
+
+def _describe_mdns_service(dns_name: str) -> tuple[str, str]:
+    """
+    Returns (service_type, description) where description may be empty.
+    """
+    st = _extract_service_type_from_name(dns_name) or _normalize_hostname(dns_name).rstrip(".")
+    desc = SERVICE_TYPE_DESCRIPTIONS.get(st, "")
+    return st, desc
 
 
 def _service_family_from_name(record_name: str) -> str:
@@ -260,18 +334,22 @@ def parse_record_types(answer):
             # Sometimes the companion-link DO have a name of device...
             if '_companion-link' in alias.split('.')[1]:
                 instance = alias.split('.')[0]
+                stype, sdesc = _describe_mdns_service("_companion-link._tcp.local")
+                extra = f" ({sdesc})" if sdesc else ""
                 prt_str = (
                     bcolors.WARNING
-                    + "\tAdvertises Apple Companion Link (often related to AirDrop/AirPlay continuity). "
+                    + f"\tAdvertises Apple Companion Link{extra}. "
                     + f"Service instance: {instance}.{meta_str}"
                     + bcolors.ENDC
                 )
                 printed = True
             # Sometimes the companion-link does not have a name of device...
             elif '_companion-link' in alias.split('.')[0]:
+                stype, sdesc = _describe_mdns_service("_companion-link._tcp.local")
+                extra = f" ({sdesc})" if sdesc else ""
                 prt_str = (
                     bcolors.WARNING
-                    + "\tAdvertises Apple Companion Link (often related to AirDrop/AirPlay continuity)."
+                    + f"\tAdvertises Apple Companion Link{extra}."
                     + f"{meta_str}"
                     + bcolors.ENDC
                 )
@@ -288,7 +366,19 @@ def parse_record_types(answer):
                     pass
                             
         if not printed:
-            prt_str = f'\tAnswer Type: PTR. Name: {answer.name} Alias: {alias}{meta_str}'
+            # Try to annotate DNS-SD service pointers when possible.
+            svc_name, svc_desc = _describe_mdns_service(answer.name)
+            alias_svc, alias_desc = _describe_mdns_service(alias)
+            if svc_desc or alias_desc:
+                parts = []
+                if svc_desc:
+                    parts.append(f"{svc_name} ↳ {svc_desc}")
+                if alias_desc and alias_svc != svc_name:
+                    parts.append(f"{alias_svc} ↳ {alias_desc}")
+                extra = f" [{'; '.join(parts)}]" if parts else ""
+            else:
+                extra = ""
+            prt_str = f'\tAnswer Type: PTR. Name: {answer.name} Alias: {alias}{extra}{meta_str}'
         
     elif answer.type ==5:
         # CNAME
@@ -512,7 +602,11 @@ def _print_summary():
                 if obs["mdns_service_types"]:
                     print("\t  - 🧪 Service types:")
                     for st in sorted(obs["mdns_service_types"]):
-                        print(f"\t    - {st}")
+                        svc, desc = _describe_mdns_service(st)
+                        if desc:
+                            print(f"\t    - {svc}  ↳ {desc}")
+                        else:
+                            print(f"\t    - {svc}")
                 if obs["mdns_service_instances_advertised"] or obs["mdns_service_instances_referenced"]:
                     print("\t  - 📣 Service instances:")
                     if obs["mdns_service_instances_advertised"]:

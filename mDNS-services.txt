@@ -39,7 +39,7 @@ _webdav._tcp                # World Wide Web Distributed Authoring and Versionin
 _webdavs._tcp               # WebDAV over SSL/TLS
 _apple-mobdev._tcp.local    # iTunes-WiFiSync, OSX Wi-Fi Sync
 _apple-mobdev2._tcp.local   # iTunes-WiFiSync, OSX Wi-Fi Sync
-_companion-link._tcp.local  # AirPlay2
+_companion-link._tcp.local  # Apple Companion Link (used for AirPlay 2 / Continuity-style device discovery)
 _googlecast._tcp.local      # Google Chrome Cast services
 _googlezone._tcp.local      # Google Zone Cast services
 _device-info._tcp.local     # OSX Device Info
